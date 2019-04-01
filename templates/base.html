@@ -1,0 +1,74 @@
+<html>
+  <head>
+    <style type="text/css">
+     * {
+       margin: 0;
+       padding: 0;
+     }
+
+     body {
+       background: #FFF;
+       font-size: 14px;
+       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+       padding: 1em;
+     }
+
+     h1 {
+       margin-bottom: 0;
+     }
+
+     .issue-date {
+       color: #999;
+     }
+
+     .movie {
+       display: flex;
+       justify-content: space-between;
+       flex-wrap:wrap;
+     }
+
+     .movie h2 {
+       flex: 1 0 100%;
+       margin: 1.5em 0 .5em 0;
+     }
+
+     .movie .image {
+       flex: 0 0 0;
+       margin: 0 1em 0 0;
+     }
+
+     .movie .times {
+       flex: 1 0 0;
+     }
+
+     .movie .times p {
+       margin: 0 0 .5em 0;
+     }
+
+     .date {
+       display: inline-block;
+       font-weight: bold;
+       width: 2.5em;
+     }
+
+     .starts {
+     }
+
+     .cinema {
+       display: inline-block;
+       margin-left: .5em;
+     }
+
+     .ends {
+       color: #777;
+     }
+
+    </style>
+  </head>
+  <body>
+    <h1>Movie showtimes for the coming week</h1>
+    <p class="issue-date">Issued on ${issue_date}</p>
+
+    ${movies}
+  </body>
+</html>

@@ -1,0 +1,17 @@
+[mailgun]
+domain = my-mailgun-domain
+api_key = my-mailgun-key
+recipients = me@somewhere.com
+from = me@somewhere.com
+
+[availability]
+mon = 16:30,19:30
+tue = 16:30,19:30
+wed = 16:30,19:30
+thu = 16:30,19:30
+fri = 16:30,23:30
+sat = 10:00,23:30
+sun = 10:00,19:30
+
+[languages]
+approved = english,dutch

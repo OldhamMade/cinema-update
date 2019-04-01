@@ -61,6 +61,9 @@ class URLs(object):
 
 
 def xpath(value, expr):
+    """Return a result from an xpath `expr` against `value`,
+    parsing via lxml if necessary."""
+
     if not hasattr(value, "tree") and isinstance(value, basestring):
         text = StringIO(value.encode('ascii', 'xmlcharrefreplace'))
         parser = etree.HTMLParser()
@@ -68,6 +71,7 @@ def xpath(value, expr):
 
     try:
         return value.xpath(expr)
+
     except AttributeError:
         raise Exception("Cannot perform XPath on Value: %s" % value)
 
@@ -132,40 +136,63 @@ def extract_showing_image(data):
     return xpath(data, ".//img/@src")[0]
 
 
-def map_name(url):
+def url_to_name(url):
+    """Return a movie name from a query url, urldecoding as necessary."""
     urlbase = URLs.imdb_query.format(title="")
     return unquote(url.replace(urlbase, "")).decode('utf8')
 
 
-def extract_language(data):
+def extract_imdb_language(data):
     try:
         return xpath(
             data,
             '//h4[text()="Language:"]/following-sibling::a'
         )[0].text
     except Exception:
-        return "English"
+        return "?"
+
+
+def extract_imdb_rating(data):
+    try:
+        return xpath(
+            data,
+            '//span[@itemprop="ratingValue"]'
+        )[0].text
+    except Exception:
+        return "?"
 
 
 def add_imdb_details(data):
+    """Return `data` updated with details from IMDB.
+
+    Primarily adds the language of the movie.
+    """
+
+    # Search for each movie by name
     reqs = (grequests.get(URLs.imdb_query.format(title=t)) for t in data)
     responses = grequests.map(reqs)
 
+    # Map the first result URL to the movie name
     lookups = dict(
-        (extract_imdb_url(resp.text), map_name(resp.url))
+        (extract_imdb_url(resp.text), url_to_name(resp.url))
         for resp
         in responses
     )
 
+    # Get the contents of each url we found
     reqs = (grequests.get(k) for k in lookups.keys() if k)
     responses = grequests.map(reqs)
 
+    # Apply data from the details page to each movie
     for resp in responses:
         lookup = lookups[resp.url]
-        language = extract_language(resp.text)
+        language = extract_imdb_language(resp.text)
+        rating = extract_imdb_rating(resp.text)
 
         for day in data[lookup]:
             data[lookup][day]["language"] = language
+            data[lookup][day]["rating"] = rating
+            data[lookup][day]["imdb"] = resp.url
 
     return data
 
@@ -185,28 +212,30 @@ def filter_by_language(data):
         in CONFIG.get("languages", "approved").split(",")
     ]
 
-    cleaned = {}
+    filtered = {}
 
     for movie, dates in data.iteritems():
         for day, details in dates.iteritems():
             if details.get("language", "").lower() in approved_languages:
-                cleaned[movie] = dates
+                filtered[movie] = dates
                 break
-    return cleaned
+
+    return filtered
 
 
-def reformat_data(data):
-    """Reformat data to make 'movie-title' top-level."""
-    formatted = defaultdict(lambda: {})
+def filter_by_availability(data):
     availability = Availability()
 
-    for day, items in data.iteritems():
-        available = availability.get(day.strftime("%a"))
+    filtered = {}
 
-        for movie in items:
+    for movie, dates in data.iteritems():
+        schedules = {}
+
+        for day, details in dates.iteritems():
+            available = availability.get(day.strftime("%a"))
             relevant = []
 
-            for showing in movie["times"]:
+            for showing in details["times"]:
                 if showing["start"] < available.at:
                     continue
                 if showing["start"] > available.until:
@@ -214,10 +243,26 @@ def reformat_data(data):
                 relevant.append(showing)
 
             if relevant:
-                formatted[movie["name"]][day] = {
-                    "image": movie["image"],
-                    "times": relevant
-                }
+                schedules[day] = details.copy()
+                schedules[day]["times"] = relevant
+
+        if schedules:
+            filtered[movie] = schedules
+
+    return filtered
+
+
+def reformat_data(data):
+    """Reformat data to make 'movie-title' top-level."""
+    formatted = defaultdict(lambda: {})
+
+    for day, items in data.iteritems():
+
+        for movie in items:
+            formatted[movie["name"]][day] = {
+                "image": movie["image"],
+                "times": movie["times"]
+            }
 
     return dict(formatted)
 
@@ -232,6 +277,8 @@ def format_email(data):
         for showdate, details in sorted(details.iteritems()):
             day = showdate.strftime("%a")
             image = details["image"]
+            rating = details["rating"]
+            imdb = details["imdb"]
 
             entries += [
                 Templates.entry.safe_substitute(
@@ -251,6 +298,8 @@ def format_email(data):
             Templates.movie.safe_substitute(
                 title=title,
                 image=image,
+                rating=rating,
+                imdb=imdb,
                 times="\n".join(entries)
             )
         )
@@ -283,13 +332,14 @@ def run():
         in range(ONE_WEEK)
     ]
 
+    # processing pipeline
     listings = gather_listings(dates)
     data = extract_data(listings)
     reformatted = reformat_data(data)
     updated = add_imdb_details(reformatted)
-    result = filter_by_language(updated)
-
-    email = format_email(result)
+    filtered = filter_by_language(updated)
+    filtered = filter_by_availability(filtered)
+    email = format_email(filtered)
     send_message(email)
 
 

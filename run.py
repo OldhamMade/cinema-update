@@ -169,7 +169,15 @@ def add_imdb_details(data):
     """
 
     # Search for each movie by name
-    reqs = (grequests.get(URLs.imdb_query.format(title=t)) for t in data)
+    reqs = (
+        grequests.get(
+            URLs.imdb_query.format(
+                title=t.encode('ascii', 'replace')
+            )
+        )
+        for t
+        in data
+    )
     responses = grequests.map(reqs)
 
     # Map the first result URL to the movie name
